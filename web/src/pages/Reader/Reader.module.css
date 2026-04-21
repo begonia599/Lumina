@@ -1,0 +1,611 @@
+.article {
+  max-width: var(--reader-width, 760px);
+  margin: 0 auto;
+  padding: 140px var(--space-6) 160px;
+  background: var(--bg-reader);
+  min-height: 100vh;
+  position: relative;
+  border-inline: 1px solid var(--rule);
+}
+
+.loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--bg-body);
+}
+
+.loadingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulseDots 1.2s ease-in-out infinite;
+}
+.loadingDot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.loadingDot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes pulseDots {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ---------- Chapter header ---------- */
+
+.chapterHead {
+  margin-bottom: var(--space-7);
+  animation: fadeUp var(--dur-slow) var(--ease-out);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chapterEyebrow {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--space-4);
+  padding: 4px 10px;
+  background: var(--accent-ghost);
+  border-radius: 4px;
+}
+
+.chapterTitle {
+  font-family: var(--font-reading);
+  font-size: 2.4rem;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  margin-bottom: var(--space-4);
+}
+
+.rule {
+  width: 4em;
+  height: 2px;
+  background: var(--accent);
+  margin-top: var(--space-3);
+}
+
+/* ---------- Body ---------- */
+
+.body {
+  font-family: var(--font-reading);
+  font-size: var(--reader-font-size, 1.15rem);
+  line-height: var(--reader-line-height, 1.85);
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  animation: fadeUp var(--dur-slower) var(--ease-out);
+}
+
+.paragraph {
+  margin-bottom: 1.25em;
+  text-indent: 2em;
+  text-align: left;
+  word-break: break-word;
+}
+
+:global(html[data-text-align='justify']) .paragraph {
+  text-align: justify;
+  hanging-punctuation: allow-end;
+}
+
+:global(html[data-indent='off']) .paragraph {
+  text-indent: 0;
+}
+
+/* ---------- Chapter navigation ---------- */
+
+.chapterNav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-9);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+.navBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule);
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast),
+    background var(--dur-fast),
+    transform var(--dur-fast);
+}
+
+.navBtn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-ghost);
+  transform: translateY(-1px);
+}
+
+.navBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---------- Immersive UI ---------- */
+
+.tocTrigger {
+  position: fixed;
+  top: 50%;
+  left: calc(50% - var(--reader-width, 760px) / 2 - 60px);
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  z-index: var(--z-nav);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out),
+    color var(--dur-fast);
+}
+
+.tocTrigger:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 1000px) {
+  .tocTrigger {
+    /* Drop the "outside the reader container" rule: on medium screens it
+     * would overlap the body text. Anchor to the screen edge instead. */
+    top: auto;
+    bottom: 20px;
+    left: 16px;
+    transform: none;
+    width: 42px;
+    height: 42px;
+  }
+  .tocTrigger.immersiveHidden {
+    transform: translateY(80px);
+  }
+}
+
+.immersiveHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tocTrigger.immersiveHidden {
+  transform: translate(-16px, -50%);
+}
+
+@media (max-width: 1000px) {
+  .tocTrigger.immersiveHidden {
+    transform: translateY(80px);
+  }
+}
+
+/* ---------- Reading meta ---------- */
+
+.readingMeta {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-reader) 75%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: var(--z-raised);
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.metaNum {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.metaDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+/* Auto-scroll play/pause pill — nested inside readingMeta. */
+.autoBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule-strong);
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color var(--dur-fast),
+    background var(--dur-fast),
+    border-color var(--dur-fast);
+}
+
+.autoBtn:hover {
+  color: var(--text-main);
+  border-color: var(--accent);
+}
+
+.autoBtnActive {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-ghost);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-ghost) 50%, transparent);
+  animation: autoPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes autoPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-ghost) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-ghost) 60%, transparent);
+  }
+}
+
+.autoBtnLabel {
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Bottom progress bar ---------- */
+
+.bottomBar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: hsla(0, 0%, 100%, 0.03);
+  z-index: var(--z-nav);
+  transition:
+    height var(--dur-fast) var(--ease-out),
+    opacity var(--dur-slow) var(--ease-out);
+  cursor: pointer;
+}
+
+.bottomBar:hover {
+  height: 12px;
+}
+
+/* Invisible taller hit region so the bar is easy to grab on touch /
+ * even when it's only 4px visually. */
+.bottomHit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  /* Intentionally outside the flow of the rendered bar so it captures taps
+   * above the visual bar edge. */
+}
+
+/* On touch / no-hover devices, keep the bar slightly taller always. */
+@media (hover: none) {
+  .bottomBar {
+    height: 6px;
+  }
+}
+
+.bottomFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  transition: width var(--dur-fast) linear;
+  pointer-events: none;
+}
+
+.bottomMarker {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--text-main);
+  transform: translateX(-1px);
+  pointer-events: none;
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.bottomTooltip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  max-width: min(420px, 80vw);
+  pointer-events: none;
+  animation: tooltipIn var(--dur-fast) var(--ease-out);
+}
+
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.tooltipNum {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipTitle {
+  font-family: var(--font-reading);
+  color: var(--text-main);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltipPct {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- HUD ---------- */
+
+.hud {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--text-main);
+  letter-spacing: 0.01em;
+  z-index: var(--z-toast);
+  animation: hudIn var(--dur-normal) var(--ease-spring),
+    hudOut var(--dur-slow) var(--ease-out) 1s forwards;
+  pointer-events: none;
+}
+
+@keyframes hudIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes hudOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.96);
+  }
+}
+
+/* ---------- TOC Drawer ---------- */
+
+.tocBackdrop {
+  position: fixed;
+  inset: 0;
+  background: hsla(225, 30%, 3%, 0.45);
+  backdrop-filter: blur(3px);
+  z-index: var(--z-overlay);
+  animation: fadeIn var(--dur-normal) var(--ease-out);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tocDrawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(380px, 88vw);
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  z-index: calc(var(--z-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+  border-right: 1px solid var(--glass-border);
+  touch-action: pan-y;
+}
+
+.tocDragHandle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--rule-strong);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .tocDrawer {
+    width: 100vw;
+  }
+  .tocDragHandle {
+    opacity: 0.8;
+  }
+}
+
+.tocHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.tocCount {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.tocList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--space-2);
+}
+
+.tocItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  text-align: left;
+  width: 100%;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+
+.tocItem:hover {
+  background: var(--rule);
+  color: var(--text-main);
+}
+
+.tocItemActive {
+  color: var(--accent);
+  background: var(--accent-ghost);
+}
+
+.tocItemActive:hover {
+  color: var(--accent);
+}
+
+.tocNum {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.4em;
+}
+
+.tocItemActive .tocNum {
+  color: var(--accent-soft);
+}
+
+.tocTitle {
+  font-family: var(--font-reading);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .article {
+    padding: 84px var(--space-4) 110px;
+    border-inline: none;
+  }
+  .chapterHead {
+    margin-bottom: var(--space-5);
+  }
+  .chapterTitle {
+    font-size: 1.75rem;
+  }
+  .body {
+    font-size: calc(var(--reader-font-size, 1.15rem) * 0.94);
+  }
+  .paragraph {
+    text-indent: 1.8em;
+  }
+  .readingMeta {
+    right: var(--space-2);
+    bottom: calc(var(--space-2) + 8px);
+    font-size: 0.72rem;
+    padding: 4px var(--space-2);
+    gap: 6px;
+  }
+  /* Hide verbose meta items on mobile — keep auto-scroll pill + chapter number */
+  .readingMeta > span:last-of-type,
+  .readingMeta > .metaDot:last-of-type {
+    display: none;
+  }
+  .autoBtnLabel {
+    display: none; /* icon-only play/pause on mobile */
+  }
+  .autoBtn {
+    padding: 6px;
+    width: 30px;
+    height: 30px;
+    justify-content: center;
+  }
+  .chapterNav {
+    margin-top: var(--space-7);
+  }
+  .hud {
+    top: 30%;
+    font-size: 0.92rem;
+    padding: var(--space-2) var(--space-4);
+  }
+  .bottomTooltip {
+    max-width: 70vw;
+    font-size: 0.7rem;
+  }
+  .tooltipTitle {
+    max-width: 120px;
+  }
+}

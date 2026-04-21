@@ -1,0 +1,93 @@
+/* Tier-2 color tokens per theme.
+ * Toggled on <html data-theme="…">.
+ */
+
+/* 🌙 深渊 — 默认 */
+[data-theme='dark'] {
+  --bg-body: hsl(225, 22%, 7%);
+  --bg-reader: hsl(225, 18%, 11%);
+  --bg-elevated: hsl(225, 18%, 14%);
+  --bg-sunken: hsl(225, 24%, 5%);
+
+  --text-main: hsl(36, 22%, 90%);
+  --text-soft: hsl(36, 12%, 72%);
+  --text-muted: hsl(225, 8%, 52%);
+  --text-faint: hsl(225, 8%, 34%);
+
+  --accent: hsl(38, 72%, 64%);
+  --accent-soft: hsl(38, 55%, 48%);
+  --accent-ghost: hsla(38, 72%, 64%, 0.12);
+  --accent-contrast: hsl(225, 30%, 10%);
+
+  --rule: hsla(36, 15%, 90%, 0.07);
+  --rule-strong: hsla(36, 15%, 90%, 0.14);
+
+  --glass-bg: hsla(225, 20%, 14%, 0.55);
+  --glass-border: hsla(36, 20%, 90%, 0.07);
+  --glass-shadow: 0 8px 32px 0 hsla(225, 40%, 2%, 0.55),
+    0 1px 0 0 hsla(36, 20%, 90%, 0.04) inset;
+  --glass-blur: 18px;
+
+  --danger: hsl(4, 75%, 65%);
+  --noise-opacity: 0.035;
+}
+
+/* ☀️ 晨曦 */
+[data-theme='light'] {
+  --bg-body: hsl(40, 30%, 96%);
+  --bg-reader: hsl(40, 40%, 99%);
+  --bg-elevated: hsl(40, 35%, 97%);
+  --bg-sunken: hsl(40, 25%, 92%);
+
+  --text-main: hsl(225, 25%, 14%);
+  --text-soft: hsl(225, 20%, 30%);
+  --text-muted: hsl(225, 10%, 48%);
+  --text-faint: hsl(225, 10%, 70%);
+
+  --accent: hsl(218, 62%, 42%);
+  --accent-soft: hsl(218, 55%, 55%);
+  --accent-ghost: hsla(218, 62%, 42%, 0.08);
+  --accent-contrast: hsl(40, 40%, 99%);
+
+  --rule: hsla(225, 25%, 14%, 0.08);
+  --rule-strong: hsla(225, 25%, 14%, 0.18);
+
+  --glass-bg: hsla(40, 35%, 99%, 0.7);
+  --glass-border: hsla(225, 25%, 14%, 0.06);
+  --glass-shadow: 0 8px 32px 0 hsla(225, 30%, 30%, 0.08),
+    0 1px 0 0 hsla(255, 100%, 100%, 0.5) inset;
+  --glass-blur: 18px;
+
+  --danger: hsl(4, 70%, 48%);
+  --noise-opacity: 0.022;
+}
+
+/* 📜 羊皮纸 */
+[data-theme='sepia'] {
+  --bg-body: hsl(34, 38%, 90%);
+  --bg-reader: hsl(34, 42%, 94%);
+  --bg-elevated: hsl(34, 38%, 92%);
+  --bg-sunken: hsl(34, 30%, 84%);
+
+  --text-main: hsl(25, 30%, 18%);
+  --text-soft: hsl(25, 22%, 32%);
+  --text-muted: hsl(25, 15%, 48%);
+  --text-faint: hsl(25, 15%, 65%);
+
+  --accent: hsl(12, 48%, 42%);
+  --accent-soft: hsl(12, 40%, 55%);
+  --accent-ghost: hsla(12, 48%, 42%, 0.1);
+  --accent-contrast: hsl(34, 42%, 94%);
+
+  --rule: hsla(25, 30%, 18%, 0.1);
+  --rule-strong: hsla(25, 30%, 18%, 0.22);
+
+  --glass-bg: hsla(34, 42%, 94%, 0.7);
+  --glass-border: hsla(25, 30%, 18%, 0.08);
+  --glass-shadow: 0 8px 32px 0 hsla(25, 35%, 15%, 0.1),
+    0 1px 0 0 hsla(40, 60%, 98%, 0.6) inset;
+  --glass-blur: 16px;
+
+  --danger: hsl(4, 70%, 42%);
+  --noise-opacity: 0.04;
+}

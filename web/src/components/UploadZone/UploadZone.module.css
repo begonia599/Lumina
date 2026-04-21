@@ -1,0 +1,76 @@
+.zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1.5px dashed var(--rule-strong);
+  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+  text-align: center;
+}
+
+.zone:hover {
+  border-color: var(--accent-soft);
+  color: var(--text-main);
+}
+
+.dragging {
+  border-color: var(--accent);
+  background: var(--accent-ghost);
+  transform: scale(1.005);
+}
+
+.busy {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.icon {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--text-main);
+  letter-spacing: -0.005em;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Compact variant — small pill button for the shelf sidebar. */
+.compact {
+  flex-direction: row;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-style: solid;
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+}
+
+.titleCompact {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  font-weight: 500;
+}

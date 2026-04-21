@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumina 阅读器 - 设计美学演示 (Demo)</title>
+    <!-- 引入 UI 字体和衬线字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* 🌙 深渊 (Dark) 主题变量 */
+            --bg-body: hsl(230, 25%, 8%);
+            --bg-reader: hsl(230, 20%, 12%);
+            --text-main: hsl(230, 15%, 85%);
+            --text-muted: hsl(230, 10%, 50%);
+            --accent: hsl(260, 100%, 75%);
+            --glass-bg: rgba(30, 32, 43, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+            
+            /* 排版排布 */
+            --font-ui: 'Inter', system-ui, sans-serif;
+            --font-reading: 'Noto Serif SC', 'Songti SC', serif;
+            --reader-width: 800px;
+        }
+
+        /* ☀️ 晨曦 (Light) 主题变量 (演示留底)
+        .theme-light {
+            --bg-body: hsl(40, 20%, 96%);
+            --bg-reader: hsl(0, 0%, 100%);
+            --text-main: hsl(230, 15%, 20%);
+            --text-muted: hsl(230, 10%, 60%);
+            --accent: hsl(230, 80%, 60%);
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(0, 0, 0, 0.05);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+        } */
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: var(--font-ui);
+            transition: background-color 0.5s ease;
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* --- 核心阅读区域 (Typography) --- */
+        .reader-container {
+            width: 100%;
+            max-width: var(--reader-width);
+            background-color: var(--bg-reader);
+            min-height: 100vh;
+            padding: 80px 60px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        .chapter-title {
+            font-family: var(--font-reading);
+            font-size: 2.2rem;
+            font-weight: 900;
+            margin-bottom: 2rem;
+            color: var(--accent);
+            letter-spacing: 0.05em;
+        }
+
+        .content {
+            font-family: var(--font-reading);
+            font-size: 1.15rem; /* 18.4px */
+            line-height: 1.8;
+            letter-spacing: 0.02em;
+            text-align: justify;
+        }
+
+        .content p {
+            margin-bottom: 1.5em;
+            text-indent: 2em; /* 首行缩进 */
+        }
+
+        /* --- UI 组件: Glassmorphism --- */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: 16px;
+            color: var(--text-main);
+        }
+
+        /* 顶部导航控制台 */
+        .topbar {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 900px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 100;
+            /* 沉浸模式：默认不透明，添加类名后变为透明 */
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 1;
+        }
+
+        .topbar.immersive-hidden {
+            opacity: 0;
+            transform: translate(-50%, -20px);
+            pointer-events: none; /* 隐匿时不可点击 */
+        }
+
+        .book-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .book-tag {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: var(--accent);
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .tools {
+            display: flex;
+            gap: 16px;
+        }
+
+        /* 高级按钮 */
+        .icon-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--accent);
+            transform: scale(1.1);
+        }
+
+        /* 侧边目录按钮 (悬浮) */
+        .toc-trigger {
+            position: fixed;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            z-index: 90;
+            transition: all 0.6s ease;
+        }
+        
+        .toc-trigger.immersive-hidden {
+            opacity: 0;
+            transform: translate(-20px, -50%);
+        }
+
+        /* 底部极细进度条 */
+        .bottom-progress {
+            position: fixed;
+            bottom: 0px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.05);
+            z-index: 100;
+            transition: height 0.3s ease, opacity 0.6s ease;
+            cursor: pointer;
+        }
+
+        .bottom-progress.immersive-hidden {
+            opacity: 0;
+        }
+
+        .bottom-progress:hover {
+            height: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 45%; /* 演示进度 */
+            border-radius: 0 4px 4px 0;
+            transition: width 0.1s;
+        }
+
+        /* SVG 图标 */
+        svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* 提示信息 */
+        .demo-toast {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            pointer-events: none;
+            animation: floatUpDown 3s ease-in-out infinite;
+            z-index: 1000;
+        }
+
+        @keyframes floatUpDown {
+            0%, 100% { transform: translate(-50%, 0); }
+            50% { transform: translate(-50%, -10px); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航栏 (毛玻璃) -->
+    <nav class="topbar glass-panel" id="ui-topbar">
+        <div class="book-info">
+            <span class="icon-btn" title="返回书架">
+                <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+            </span>
+            <div class="book-tag">LUMINA 阅读器</div>
+            <span style="font-weight: 500; font-size: 0.95rem;">三体 - 黑暗森林</span>
+        </div>
+        <div class="tools">
+            <button class="icon-btn" title="添加书签" onclick="alert('书签功能交互展示')">
+                <svg viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            </button>
+            <button class="icon-btn" title="显示设置" onclick="alert('设置面板将在此处以毛玻璃浮层滑出')">
+                <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- 侧边目录唤出按钮 -->
+    <button class="icon-btn glass-panel toc-trigger" id="ui-toc" title="目录" onclick="alert('侧边目录面板滑出')">
+        <svg viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+    </button>
+
+    <!-- 核心排版区 -->
+    <article class="reader-container">
+        <h1 class="chapter-title">序章 褐色蚂蚁</h1>
+        <div class="content">
+            <p>褐蚁已经忘记这里曾是它的家。这段时光对于暮色中的大地和刚刚出现的星星来说短得可以忽略不计，但对于它来说却是漫长的。</p>
+            <p>在那个已被忘却的日子里，它的世界颠覆了，泥土飞抛，出现了一条又深又宽的峡谷，然后泥土又轰然落下，峡谷消失了，在原来是平地的地方出现了一座孤峰。这是罗辑为叶文洁修墓时发生的事。</p>
+            <p>此时，孤峰被孤峰周围的地面投下的阴影笼罩着。这阴影的下面，是褐蚁那已经失去了入口的宏伟的地下宫殿。它现在知道那些是不可能再回去的了，但它还是在孤峰的脚下徘徊，希望能找到别的入口。</p>
+            <p>由于这只褐蚁没有带任何信息素回去，整个蚁群也都失去了那个过去的家园的坐标，它现在正孤单单地找寻在这片不可知的大地上。</p>
+            <p>就在这时，它感到了地面的轻微震动，抬头望去，看到那个巨大的创造者正在夕阳中向它走来。那是两个高大得甚至顶到天空的直立生物，其中一个甚至还在流泪。然而褐蚁对泪水毫无理解，它仅仅感受到了那可以震撼大地的脚步声，然后本能地避让到了那座刚竖立起不久的冰冷方碑（墓碑）之下。</p>
+            <p>（这是一段用于演示字体排印：字距、行高、首行缩进等黄金比例的占位样例文本。请体会 Noto Serif SC 在这种页面宽度下带来的无压迫感的纸质阅读体验。）</p>
+            <p>（当您停止移动鼠标 3 秒后，边缘的 UI 控制面板、按钮和底部进度条都会如同呼吸一般柔和地隐褪，为您扫除视野内的一切杂乱干扰，这就是 “零干扰沉浸阅读”。当您再次滑动鼠标时，它们瞬间又会丝滑浮现。）</p>
+        </div>
+    </article>
+
+    <!-- 底部进度条 -->
+    <div class="bottom-progress" id="ui-progress">
+        <div class="progress-fill"></div>
+    </div>
+
+    <!-- 提示框 -->
+    <div class="demo-toast glass-panel">💡 停止滑动鼠标 3 秒，体验沉浸效果</div>
+
+    <script>
+        // 沉浸模式逻辑
+        let timer;
+        const uiElements = [
+            document.getElementById('ui-topbar'),
+            document.getElementById('ui-toc'),
+            document.getElementById('ui-progress')
+        ];
+
+        function hideUI() {
+            uiElements.forEach(el => el.classList.add('immersive-hidden'));
+        }
+
+        function showUI() {
+            uiElements.forEach(el => el.classList.remove('immersive-hidden'));
+        }
+
+        function resetTimer() {
+            showUI();
+            clearTimeout(timer);
+            // 3秒无操作后触发隐藏
+            timer = setTimeout(hideUI, 3000);
+        }
+
+        // 监听鼠标和滚动事件
+        document.addEventListener('mousemove', resetTimer);
+        document.addEventListener('scroll', resetTimer);
+        window.addEventListener('scroll', resetTimer); // 确保在某些容器滚动时也能触发
+        
+        // 初始计时
+        resetTimer();
+    </script>
+</body>
+</html>

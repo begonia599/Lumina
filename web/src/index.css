@@ -1,0 +1,17 @@
+/* Font packages — load up front so initial render already has metrics. */
+@import '@fontsource-variable/fraunces/index.css';
+@import '@fontsource-variable/geist/index.css';
+@import '@fontsource/noto-serif-sc/400.css';
+@import '@fontsource/noto-serif-sc/600.css';
+@import '@fontsource/noto-serif-sc/900.css';
+
+/* Design system */
+@import './styles/tokens.css';
+@import './styles/themes.css';
+@import './styles/reset.css';
+@import './styles/typography.css';
+@import './styles/glass.css';
+
+#root {
+  isolation: isolate;
+}

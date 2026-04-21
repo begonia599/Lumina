@@ -1,0 +1,41 @@
+# Compiled binaries
+lumina
+lumina.exe
+*.exe
+*.out
+
+# Environment — never commit real values
+.env
+.env.local
+.env.*.local
+
+# User-uploaded content (books, covers, runtime data)
+uploads/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Go
+vendor/
+*.test
+coverage.out
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.log
+
+# Scheduled / temporary (local Claude Code state)
+.claude/
+
+# Logs
+*.log
