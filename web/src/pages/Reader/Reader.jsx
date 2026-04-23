@@ -14,6 +14,7 @@ import { SearchOverlay } from '../../components/SearchOverlay/SearchOverlay.jsx'
 import { ShortcutHelp } from '../../components/ShortcutHelp/ShortcutHelp.jsx'
 import { throttle, debounce } from '../../utils/throttle.js'
 import { estimateMinutes, formatMinutes } from '../../utils/reading-time.js'
+import { capturePosition, restorePosition } from '../../utils/position.js'
 import { useAutoScroll } from '../../hooks/useAutoScroll.js'
 import styles from './Reader.module.css'
 
@@ -38,9 +39,59 @@ export function Reader() {
   const autoAdvance = useConfigStore((s) => s.autoAdvance)
 
   const articleRef = useRef(null)
+  const epubContentRef = useRef(null)
   const paraRefs = useRef(new Map())
   // Carry an override scroll target across a chapter-load + effect cycle.
   const pendingJumpRef = useRef(null)
+  const pendingSearchRef = useRef(null)
+  const activeSearchMarkRef = useRef(null)
+  const activeSearchFallbackRef = useRef(null)
+  const searchCleanupTimerRef = useRef(null)
+
+  const clearTemporarySearchHighlight = useCallback(() => {
+    if (searchCleanupTimerRef.current) {
+      clearTimeout(searchCleanupTimerRef.current)
+      searchCleanupTimerRef.current = null
+    }
+
+    if (activeSearchMarkRef.current?.isConnected) {
+      unwrapTemporaryMark(activeSearchMarkRef.current)
+    }
+    activeSearchMarkRef.current = null
+
+    if (activeSearchFallbackRef.current?.classList) {
+      activeSearchFallbackRef.current.classList.remove('search-hit-fallback')
+    }
+    activeSearchFallbackRef.current = null
+  }, [])
+
+  const scheduleSearchHighlight = useCallback(
+    (query, hitSeq = 0) => {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          clearTemporarySearchHighlight()
+          const container = epubContentRef.current
+          if (!container || !query) return
+
+          const result = highlightEPUBSearchHit(container, query, hitSeq)
+          if (!result) {
+            setHudText('未定位到搜索结果')
+            setTimeout(() => setHudText(null), 1400)
+            return
+          }
+
+          activeSearchMarkRef.current = result.mark || null
+          activeSearchFallbackRef.current = result.fallback || null
+          result.target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+
+          searchCleanupTimerRef.current = setTimeout(() => {
+            clearTemporarySearchHighlight()
+          }, 3000)
+        }),
+      )
+    },
+    [clearTemporarySearchHighlight],
+  )
 
   // --- Auto-scroll ---
   useAutoScroll({
@@ -95,7 +146,10 @@ export function Reader() {
         navigate('/', { replace: true })
       }
     })()
-    return () => close()
+    return () => {
+      clearTemporarySearchHighlight()
+      close()
+    }
   }, [bookId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Restore scroll offset when chapter changes ---
@@ -103,6 +157,7 @@ export function Reader() {
   // updates (from the scroll listener) don't re-trigger this effect.
   useEffect(() => {
     if (!chapter) return
+    clearTemporarySearchHighlight()
 
     // Decide the target offset:
     //   1. Pending scroll-pct jump (from progress-bar scrub) wins.
@@ -110,30 +165,23 @@ export function Reader() {
     //   3. Else saved progress for this chapter, if any.
     //   4. Else scroll to top.
     const pending = pendingJumpRef.current
-    let targetOffset = 0
-    let targetScrollPct = null
+    let targetPosition = { chapterIdx: chapter.chapterIdx, charOffset: 0 }
     if (pending && pending.chapterIdx === chapter.chapterIdx) {
       pendingJumpRef.current = null
-      if (pending.scrollPct != null) {
-        targetScrollPct = pending.scrollPct
-      } else {
-        targetOffset = pending.charOffset
-      }
+      targetPosition = pending
     } else {
       const p = useReaderStore.getState().progress
-      if (p && p.chapterIdx === chapter.chapterIdx && p.charOffset > 0) {
-        targetOffset = p.charOffset
+      if (p && p.chapterIdx === chapter.chapterIdx) {
+        targetPosition = p
       }
     }
 
-    // Wait for fonts to settle so paragraph heights are accurate, then RAF.
     const doScroll = () => {
-      if (targetScrollPct != null) {
-        scrollToPercentInChapter(targetScrollPct)
-      } else if (targetOffset > 0) {
-        scrollToCharOffset(paraRefs.current, chapter.paragraphs, targetOffset)
-      } else {
-        window.scrollTo({ top: 0, behavior: 'instant' })
+      restorePosition(chapter, targetPosition, paraRefs, epubContentRef)
+      const pendingSearch = pendingSearchRef.current
+      if (chapter.format === 'epub' && pendingSearch && pendingSearch.chapterIdx === chapter.chapterIdx) {
+        pendingSearchRef.current = null
+        scheduleSearchHighlight(pendingSearch.query, pendingSearch.hitSeq ?? 0)
       }
     }
     let cancelled = false
@@ -154,23 +202,12 @@ export function Reader() {
       cancelled = true
       clearTimeout(t)
     }
-  }, [chapter]) // intentionally omit `progress`
+  }, [chapter, clearTemporarySearchHighlight, scheduleSearchHighlight]) // intentionally omit `progress`
 
   // --- Progress sync: find topmost visible paragraph, save throttled+debounced ---
   const computeAndSave = useCallback(() => {
     if (!chapter) return
-    const topPad = 80
-    let visibleIdx = 0
-    let visibleOffset = 0
-    for (let i = 0; i < chapter.paragraphs.length; i++) {
-      const el = paraRefs.current.get(i)
-      if (!el) continue
-      const rect = el.getBoundingClientRect()
-      if (rect.bottom < topPad) continue
-      visibleIdx = i
-      visibleOffset = cumulativeCharOffset(chapter.paragraphs, i)
-      break
-    }
+    const position = capturePosition(chapter, paraRefs, epubContentRef)
     const vh = window.innerHeight || 1
     const scrollPct = Math.max(0, Math.min(1, (window.scrollY + vh) / document.documentElement.scrollHeight))
     const percentage =
@@ -179,10 +216,11 @@ export function Reader() {
         : scrollPct
     saveProgress({
       chapterIdx: chapter.chapterIdx,
-      charOffset: visibleOffset,
+      charOffset: position?.charOffset || 0,
+      anchor: position?.anchor,
+      scrollPct: position?.scrollPct,
       percentage: Math.max(0, Math.min(1, percentage)),
     })
-    return { visibleIdx }
   }, [chapter, chapters.length, saveProgress])
 
   useEffect(() => {
@@ -196,6 +234,59 @@ export function Reader() {
     window.addEventListener('scroll', handler, { passive: true })
     return () => window.removeEventListener('scroll', handler)
   }, [chapter, computeAndSave])
+
+  useEffect(() => {
+    if (chapter?.format !== 'epub' || !epubContentRef.current) return
+    const container = epubContentRef.current
+
+    const onClick = (e) => {
+      const target = e.target instanceof Element ? e.target : null
+      const link = target?.closest('a[href]')
+      if (!link || !container.contains(link)) return
+
+      const href = link.getAttribute('href')?.trim()
+      if (!href) return
+
+      if (href.startsWith('#/chapter/')) {
+        const destination = parseEPUBChapterHref(href)
+        if (!destination) return
+
+        e.preventDefault()
+        setAutoScrolling(false)
+        pendingSearchRef.current = null
+
+        const nextPosition = destination.anchor
+          ? { chapterIdx: destination.chapterIdx, anchor: destination.anchor }
+          : { chapterIdx: destination.chapterIdx, scrollPct: 0 }
+        pendingJumpRef.current = nextPosition
+
+        if (chapter.chapterIdx !== destination.chapterIdx) {
+          loadChapter(destination.chapterIdx)
+        } else {
+          pendingJumpRef.current = null
+          restorePosition(chapter, nextPosition, paraRefs, epubContentRef)
+        }
+        return
+      }
+
+      if (href.startsWith('#')) {
+        const anchor = href.slice(1)
+        if (!anchor) return
+        e.preventDefault()
+        setAutoScrolling(false)
+        pendingSearchRef.current = null
+        restorePosition(
+          chapter,
+          { chapterIdx: chapter.chapterIdx, anchor },
+          paraRefs,
+          epubContentRef,
+        )
+      }
+    }
+
+    container.addEventListener('click', onClick)
+    return () => container.removeEventListener('click', onClick)
+  }, [chapter, loadChapter])
 
   // --- Immersive mode ---
   useEffect(() => {
@@ -273,35 +364,85 @@ export function Reader() {
   async function handleAddBookmark() {
     if (!chapter || !book) return
     try {
-      await bookmarksApi.createBookmark(book.id, {
+      const position = capturePosition(chapter, paraRefs, epubContentRef)
+      const bookmark = await bookmarksApi.createBookmark(book.id, {
         chapterIdx: chapter.chapterIdx,
-        charOffset: progress?.charOffset || 0,
+        charOffset: position?.charOffset || 0,
+        anchor: position?.anchor,
+        scrollPct: position?.scrollPct,
         note: '',
       })
       setHudText('已添加书签')
       setTimeout(() => setHudText(null), 1400)
+      return bookmark
     } catch (err) {
       setHudText(err.message || '书签创建失败')
       setTimeout(() => setHudText(null), 2000)
+      return null
     }
   }
 
   function handleJumpBookmark(targetChapterIdx, targetCharOffset) {
+    if (typeof targetChapterIdx === 'object') {
+      targetCharOffset = {
+        chapterIdx: targetChapterIdx.chapterIdx,
+        charOffset: targetChapterIdx.charOffset || 0,
+        anchor: targetChapterIdx.anchor,
+        scrollPct: targetChapterIdx.scrollPct,
+      }
+    }
     setBookmarksOpen(false)
     // Carry the target offset via a one-shot ref so the next chapter-load
     // effect can snap the scroll there (overrides saved progress).
-    pendingJumpRef.current = { chapterIdx: targetChapterIdx, charOffset: targetCharOffset }
-    if (chapter?.chapterIdx !== targetChapterIdx) {
-      loadChapter(targetChapterIdx)
+    const target =
+      typeof targetCharOffset === 'object'
+        ? targetCharOffset
+        : { chapterIdx: targetChapterIdx, charOffset: targetCharOffset }
+    pendingJumpRef.current = target
+    if (chapter?.chapterIdx !== target.chapterIdx) {
+      loadChapter(target.chapterIdx)
     } else {
       // Same chapter — scroll now.
-      scrollToCharOffset(paraRefs.current, chapter.paragraphs, targetCharOffset)
+      pendingJumpRef.current = null
+      restorePosition(chapter, target, paraRefs, epubContentRef)
     }
   }
 
   function gotoChapter(idx) {
     loadChapter(idx)
     setTocOpen(false)
+  }
+
+  function handleSearchJump(hit, query) {
+    if (!hit) return
+
+    setSearchOpen(false)
+    setAutoScrolling(false)
+
+    const isEPUBHit = hit.hitSeq != null
+    const target = isEPUBHit
+      ? { chapterIdx: hit.chapterIdx, scrollPct: 0 }
+      : { chapterIdx: hit.chapterIdx, charOffset: hit.charOffset || 0 }
+
+    pendingJumpRef.current = target
+    pendingSearchRef.current =
+      isEPUBHit && query
+        ? { chapterIdx: hit.chapterIdx, hitSeq: hit.hitSeq, query }
+        : null
+
+    if (chapter?.chapterIdx !== hit.chapterIdx) {
+      loadChapter(hit.chapterIdx)
+      return
+    }
+
+    pendingJumpRef.current = null
+    restorePosition(chapter, target, paraRefs, epubContentRef)
+
+    if (pendingSearchRef.current && chapter?.format === 'epub') {
+      const pendingSearch = pendingSearchRef.current
+      pendingSearchRef.current = null
+      scheduleSearchHighlight(pendingSearch.query, pendingSearch.hitSeq ?? 0)
+    }
   }
 
   if (status === 'loading' || !chapter) {
@@ -367,19 +508,30 @@ export function Reader() {
         </header>
 
         <div className={styles.body}>
-          {chapter.paragraphs.map((p, i) => (
-            <p
-              key={i}
-              ref={(el) => {
-                if (el) paraRefs.current.set(i, el)
-                else paraRefs.current.delete(i)
-              }}
-              data-para-idx={i}
-              className={styles.paragraph}
-            >
-              {p}
-            </p>
-          ))}
+          {chapter.format === 'epub' ? (
+            <>
+              {chapter.css && <style data-epub-scope={`ch-${chapter.chapterIdx}`}>{chapter.css}</style>}
+              <div
+                ref={epubContentRef}
+                className={styles.epubContent}
+                dangerouslySetInnerHTML={{ __html: chapter.html }}
+              />
+            </>
+          ) : (
+            chapter.paragraphs.map((p, i) => (
+              <p
+                key={i}
+                ref={(el) => {
+                  if (el) paraRefs.current.set(i, el)
+                  else paraRefs.current.delete(i)
+                }}
+                data-para-idx={i}
+                className={styles.paragraph}
+              >
+                {p}
+              </p>
+            ))
+          )}
         </div>
 
         <nav className={styles.chapterNav}>
@@ -440,6 +592,7 @@ export function Reader() {
           if (chapter?.chapterIdx !== idx) {
             loadChapter(idx)
           } else {
+            pendingJumpRef.current = null
             scrollToPercentInChapter(pctInChapter)
           }
         }}
@@ -472,6 +625,7 @@ export function Reader() {
         chapters={chapters}
         currentChapterIdx={chapter.chapterIdx}
         currentCharOffset={progress?.charOffset || 0}
+        onAddCurrent={handleAddBookmark}
         onJump={handleJumpBookmark}
         onClose={() => setBookmarksOpen(false)}
       />
@@ -479,7 +633,7 @@ export function Reader() {
       <SearchOverlay
         open={searchOpen}
         bookId={book?.id}
-        onJump={(chapterIdx, charOffset) => handleJumpBookmark(chapterIdx, charOffset)}
+        onJump={handleSearchJump}
         onClose={() => setSearchOpen(false)}
       />
 
@@ -546,34 +700,130 @@ function TOCDrawer({ chapters, currentIdx, onPick, onClose }) {
   )
 }
 
-/** Sum rune lengths of paragraphs [0..i). */
-function cumulativeCharOffset(paragraphs, upToIdx) {
-  let n = 0
-  for (let k = 0; k < upToIdx; k++) {
-    n += [...paragraphs[k]].length
-  }
-  return n
-}
-
-/** Scroll the viewport so the paragraph containing `targetOffset` sits at the top. */
-function scrollToCharOffset(map, paragraphs, targetOffset) {
-  let cum = 0
-  for (let i = 0; i < paragraphs.length; i++) {
-    const len = [...paragraphs[i]].length
-    if (cum + len >= targetOffset) {
-      const el = map.get(i)
-      if (el) el.scrollIntoView({ block: 'start', behavior: 'instant' })
-      return
-    }
-    cum += len
-  }
-}
-
 /** Scroll the viewport to a proportion (0..1) of the document height.
  *  Used by the progress-bar scrub. */
 function scrollToPercentInChapter(pct) {
   const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
   window.scrollTo({ top: max * Math.max(0, Math.min(1, pct)), behavior: 'instant' })
+}
+
+function parseEPUBChapterHref(href) {
+  const match = href.match(/^#\/chapter\/(\d+)(?:#(.+))?$/)
+  if (!match) return null
+
+  const chapterIdx = Number(match[1])
+  if (!Number.isInteger(chapterIdx)) return null
+
+  let anchor = null
+  if (match[2]) {
+    try {
+      anchor = decodeURIComponent(match[2])
+    } catch {
+      anchor = match[2]
+    }
+  }
+
+  return { chapterIdx, anchor }
+}
+
+function highlightEPUBSearchHit(container, query, hitSeq = 0) {
+  if (!container || !query) return null
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent?.trim()
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT
+    },
+  })
+
+  const nodes = []
+  let text = ''
+  let current = walker.nextNode()
+  while (current) {
+    const value = current.textContent || ''
+    nodes.push({ node: current, start: text.length, text: value })
+    text += value
+    current = walker.nextNode()
+  }
+
+  if (!text) return null
+
+  const matchStart = findNthMatchIndex(text, query, hitSeq)
+  if (matchStart < 0) return null
+
+  const matchEnd = matchStart + query.length
+  const startPos = locateTextOffset(nodes, matchStart, true)
+  const endPos = locateTextOffset(nodes, matchEnd, false)
+  if (!startPos || !endPos) return null
+
+  if (startPos.node === endPos.node) {
+    const matchNode = startPos.node.splitText(startPos.offset)
+    matchNode.splitText(matchEnd - matchStart)
+    const mark = document.createElement('mark')
+    mark.className = 'search-hit-temp'
+    matchNode.parentNode?.replaceChild(mark, matchNode)
+    mark.appendChild(matchNode)
+    return { mark, target: mark }
+  }
+
+  const range = document.createRange()
+  range.setStart(startPos.node, startPos.offset)
+  range.setEnd(endPos.node, endPos.offset)
+
+  try {
+    const mark = document.createElement('mark')
+    mark.className = 'search-hit-temp'
+    range.surroundContents(mark)
+    return { mark, target: mark }
+  } catch {
+    const fallback = startPos.node.parentElement || container
+    fallback.classList.add('search-hit-fallback')
+    return { fallback, target: fallback }
+  }
+}
+
+function findNthMatchIndex(text, query, hitSeq) {
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  if (!lowerQuery) return -1
+
+  let from = 0
+  let count = 0
+  while (from <= lowerText.length) {
+    const idx = lowerText.indexOf(lowerQuery, from)
+    if (idx < 0) return -1
+    if (count === hitSeq) return idx
+    count += 1
+    from = idx + Math.max(1, lowerQuery.length)
+  }
+  return -1
+}
+
+function locateTextOffset(nodes, absoluteOffset, preferNext) {
+  for (const entry of nodes) {
+    const end = entry.start + entry.text.length
+    if (absoluteOffset < end) {
+      return { node: entry.node, offset: absoluteOffset - entry.start }
+    }
+    if (!preferNext && absoluteOffset === end) {
+      return { node: entry.node, offset: entry.text.length }
+    }
+  }
+
+  const last = nodes[nodes.length - 1]
+  if (!last) return null
+  return { node: last.node, offset: last.text.length }
+}
+
+function unwrapTemporaryMark(mark) {
+  if (!mark?.parentNode) return
+  const parent = mark.parentNode
+  while (mark.firstChild) {
+    parent.insertBefore(mark.firstChild, mark)
+  }
+  parent.removeChild(mark)
+  parent.normalize()
 }
 
 /** Bottom progress bar. Click/tap anywhere to jump to that proportion of the

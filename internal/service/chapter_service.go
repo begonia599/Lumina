@@ -17,8 +17,11 @@ import (
 type ChapterContent struct {
 	ChapterIdx int      `json:"chapterIdx"`
 	Title      string   `json:"title"`
-	Paragraphs []string `json:"paragraphs"`
+	Format     string   `json:"format"`
 	CharCount  int      `json:"charCount"`
+	Paragraphs []string `json:"paragraphs,omitempty"`
+	HTML       string   `json:"html,omitempty"`
+	CSS        string   `json:"css,omitempty"`
 	PrevIdx    *int     `json:"prevIdx,omitempty"`
 	NextIdx    *int     `json:"nextIdx,omitempty"`
 }
@@ -29,7 +32,7 @@ func GetChapters(ctx context.Context, userID, bookID int) ([]model.Chapter, erro
 		return nil, err
 	}
 	rows, err := database.Pool.Query(ctx,
-		`SELECT id, book_id, chapter_idx, title, start_pos, end_pos
+		`SELECT id, book_id, chapter_idx, title, start_pos, end_pos, COALESCE(content_ref, '')
 		 FROM chapters WHERE book_id = $1
 		 ORDER BY chapter_idx ASC`, bookID,
 	)
@@ -41,7 +44,7 @@ func GetChapters(ctx context.Context, userID, bookID int) ([]model.Chapter, erro
 	var chapters []model.Chapter
 	for rows.Next() {
 		var ch model.Chapter
-		if err := rows.Scan(&ch.ID, &ch.BookID, &ch.ChapterIdx, &ch.Title, &ch.StartPos, &ch.EndPos); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.BookID, &ch.ChapterIdx, &ch.Title, &ch.StartPos, &ch.EndPos, &ch.ContentRef); err != nil {
 			return nil, err
 		}
 		ch.Title = cleanDisplayText(ch.Title)
@@ -58,25 +61,75 @@ func GetChapterContent(ctx context.Context, userID, bookID, chapterIdx int) (*Ch
 	}
 
 	var filePath string
+	var sourcePath *string
+	var format string
 	err := database.Pool.QueryRow(ctx,
-		`SELECT file_path FROM books WHERE id = $1 AND user_id = $2`,
+		`SELECT file_path, source_path, format FROM books WHERE id = $1 AND user_id = $2`,
 		bookID, userID,
-	).Scan(&filePath)
+	).Scan(&filePath, &sourcePath, &format)
 	if err != nil {
 		return nil, ErrNotFound
 	}
 
 	var (
 		title            string
+		contentRef       *string
 		startPos, endPos int
 	)
 	err = database.Pool.QueryRow(ctx,
-		`SELECT title, start_pos, end_pos FROM chapters
+		`SELECT title, start_pos, end_pos, content_ref FROM chapters
 		 WHERE book_id = $1 AND chapter_idx = $2`,
 		bookID, chapterIdx,
-	).Scan(&title, &startPos, &endPos)
+	).Scan(&title, &startPos, &endPos, &contentRef)
 	if err != nil {
 		return nil, ErrNotFound
+	}
+
+	// Neighbor indexes for prev/next navigation.
+	var prevIdx, nextIdx *int
+	if chapterIdx > 0 {
+		v := chapterIdx - 1
+		var exists int
+		if err := database.Pool.QueryRow(ctx,
+			`SELECT 1 FROM chapters WHERE book_id = $1 AND chapter_idx = $2`,
+			bookID, v,
+		).Scan(&exists); err == nil {
+			prevIdx = &v
+		}
+	}
+	{
+		v := chapterIdx + 1
+		var exists int
+		if err := database.Pool.QueryRow(ctx,
+			`SELECT 1 FROM chapters WHERE book_id = $1 AND chapter_idx = $2`,
+			bookID, v,
+		).Scan(&exists); err == nil {
+			nextIdx = &v
+		}
+	}
+
+	if format == "epub" {
+		if sourcePath == nil || *sourcePath == "" || contentRef == nil || *contentRef == "" {
+			return nil, fmt.Errorf("epub chapter source missing")
+		}
+		zr, err := openEPUBFromPath(*sourcePath)
+		if err != nil {
+			return nil, err
+		}
+		html, css, err := SanitizeChapterHTML(ctx, zr, bookID, chapterIdx, *contentRef)
+		if err != nil {
+			return nil, err
+		}
+		return &ChapterContent{
+			ChapterIdx: chapterIdx,
+			Title:      cleanDisplayText(title),
+			Format:     "epub",
+			CharCount:  max(0, endPos-startPos),
+			HTML:       html,
+			CSS:        css,
+			PrevIdx:    prevIdx,
+			NextIdx:    nextIdx,
+		}, nil
 	}
 
 	// Read file (already UTF-8).
@@ -102,33 +155,10 @@ func GetChapterContent(ctx context.Context, userID, bookID, chapterIdx int) (*Ch
 	paragraphs := SplitParagraphs(decoded)
 	title = cleanDisplayText(title)
 
-	// Neighbor indexes for prev/next navigation.
-	var prevIdx, nextIdx *int
-	if chapterIdx > 0 {
-		v := chapterIdx - 1
-		// Only expose prevIdx if that chapter exists.
-		var exists int
-		if err := database.Pool.QueryRow(ctx,
-			`SELECT 1 FROM chapters WHERE book_id = $1 AND chapter_idx = $2`,
-			bookID, v,
-		).Scan(&exists); err == nil {
-			prevIdx = &v
-		}
-	}
-	{
-		v := chapterIdx + 1
-		var exists int
-		if err := database.Pool.QueryRow(ctx,
-			`SELECT 1 FROM chapters WHERE book_id = $1 AND chapter_idx = $2`,
-			bookID, v,
-		).Scan(&exists); err == nil {
-			nextIdx = &v
-		}
-	}
-
 	return &ChapterContent{
 		ChapterIdx: chapterIdx,
 		Title:      title,
+		Format:     "txt",
 		Paragraphs: paragraphs,
 		CharCount:  len([]rune(decoded)),
 		PrevIdx:    prevIdx,
@@ -182,6 +212,7 @@ type SearchHit struct {
 	ChapterTitle           string `json:"chapterTitle"`
 	ParagraphIdx           int    `json:"paragraphIdx"`
 	CharOffset             int    `json:"charOffset"` // offset in runes from chapter start
+	HitSeq                 *int   `json:"hitSeq,omitempty"`
 	Preview                string `json:"preview"`
 	PreviewHighlightStart  int    `json:"previewHighlightStart"`  // rune offset in preview
 	PreviewHighlightLength int    `json:"previewHighlightLength"` // rune length of match
@@ -207,10 +238,11 @@ func SearchBook(ctx context.Context, userID, bookID int, query string) (*SearchR
 	}
 
 	var filePath string
+	var format string
 	err := database.Pool.QueryRow(ctx,
-		`SELECT file_path FROM books WHERE id = $1 AND user_id = $2`,
+		`SELECT file_path, format FROM books WHERE id = $1 AND user_id = $2`,
 		bookID, userID,
-	).Scan(&filePath)
+	).Scan(&filePath, &format)
 	if err != nil {
 		return nil, ErrNotFound
 	}
@@ -230,6 +262,7 @@ func SearchBook(ctx context.Context, userID, bookID int, query string) (*SearchR
 	lowerContent := strings.ToLower(content)
 	lowerQuery := strings.ToLower(query)
 	queryByteLen := len(lowerQuery)
+	chapterHitSeq := make(map[int]int)
 
 	hits := make([]SearchHit, 0, 16)
 	searchFrom := 0
@@ -280,7 +313,7 @@ func SearchBook(ctx context.Context, userID, bookID int, query string) (*SearchR
 		decodedChapterPrefix := cleanDisplayText(content[chStart:absPos])
 		charOffset := len([]rune(decodedChapterPrefix))
 
-		hits = append(hits, SearchHit{
+		hit := SearchHit{
 			ChapterIdx:             chIdx,
 			ChapterTitle:           cleanDisplayText(chTitle),
 			ParagraphIdx:           paraIdx,
@@ -288,7 +321,15 @@ func SearchBook(ctx context.Context, userID, bookID int, query string) (*SearchR
 			Preview:                decodedPreview,
 			PreviewHighlightStart:  highlightStart,
 			PreviewHighlightLength: highlightLen,
-		})
+		}
+		if format == "epub" {
+			seq := chapterHitSeq[chIdx]
+			hit.HitSeq = &seq
+			hit.ParagraphIdx = 0
+			chapterHitSeq[chIdx] = seq + 1
+		}
+
+		hits = append(hits, hit)
 
 		searchFrom = absPos + queryByteLen
 	}

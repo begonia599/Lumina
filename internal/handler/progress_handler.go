@@ -44,9 +44,11 @@ func UpdateProgress(c *gin.Context) {
 	}
 
 	var req struct {
-		ChapterIdx int     `json:"chapterIdx"`
-		CharOffset int     `json:"charOffset"`
-		Percentage float64 `json:"percentage"`
+		ChapterIdx int      `json:"chapterIdx"`
+		CharOffset int      `json:"charOffset"`
+		Anchor     *string  `json:"anchor"`
+		ScrollPct  *float64 `json:"scrollPct"`
+		Percentage float64  `json:"percentage"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidation, "请求格式错误")
@@ -61,8 +63,17 @@ func UpdateProgress(c *gin.Context) {
 	} else if req.Percentage > 1 {
 		req.Percentage = 1
 	}
+	if req.ScrollPct != nil {
+		if *req.ScrollPct < 0 {
+			v := 0.0
+			req.ScrollPct = &v
+		} else if *req.ScrollPct > 1 {
+			v := 1.0
+			req.ScrollPct = &v
+		}
+	}
 
-	if err := service.UpdateProgress(c.Request.Context(), userID, bookID, req.ChapterIdx, req.CharOffset, req.Percentage); err != nil {
+	if err := service.UpdateProgress(c.Request.Context(), userID, bookID, req.ChapterIdx, req.CharOffset, req.Anchor, req.ScrollPct, req.Percentage); err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "书籍不存在")
 			return

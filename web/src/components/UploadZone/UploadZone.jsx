@@ -11,7 +11,8 @@ export function UploadZone({ onUpload, variant = 'full' }) {
   async function handleFiles(files) {
     const file = files?.[0]
     if (!file) return
-    if (!file.name.toLowerCase().endsWith('.txt')) {
+    const ext = file.name.toLowerCase().split('.').pop()
+    if (!['txt', 'epub'].includes(ext)) {
       setError('目前仅支持 .txt 文件')
       return
     }
@@ -44,7 +45,7 @@ export function UploadZone({ onUpload, variant = 'full' }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".txt,text/plain"
+        accept=".txt,.epub,text/plain,application/epub+zip"
         className={styles.input}
         onChange={(e) => handleFiles(e.target.files)}
       />

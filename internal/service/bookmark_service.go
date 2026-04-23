@@ -13,7 +13,7 @@ func GetBookmarks(ctx context.Context, userID, bookID int) ([]model.Bookmark, er
 		return nil, err
 	}
 	rows, err := database.Pool.Query(ctx,
-		`SELECT id, user_id, book_id, chapter_idx, char_offset, note, created_at
+		`SELECT id, user_id, book_id, chapter_idx, char_offset, anchor, scroll_pct, note, created_at
 		 FROM bookmarks
 		 WHERE book_id = $1 AND user_id = $2
 		 ORDER BY created_at DESC`,
@@ -27,7 +27,7 @@ func GetBookmarks(ctx context.Context, userID, bookID int) ([]model.Bookmark, er
 	var bookmarks []model.Bookmark
 	for rows.Next() {
 		var bm model.Bookmark
-		if err := rows.Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Note, &bm.CreatedAt); err != nil {
+		if err := rows.Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Anchor, &bm.ScrollPct, &bm.Note, &bm.CreatedAt); err != nil {
 			return nil, err
 		}
 		bookmarks = append(bookmarks, bm)
@@ -37,17 +37,17 @@ func GetBookmarks(ctx context.Context, userID, bookID int) ([]model.Bookmark, er
 }
 
 // CreateBookmark adds a new bookmark for (userID, bookID).
-func CreateBookmark(ctx context.Context, userID, bookID, chapterIdx, charOffset int, note string) (*model.Bookmark, error) {
+func CreateBookmark(ctx context.Context, userID, bookID, chapterIdx, charOffset int, anchor *string, scrollPct *float64, note string) (*model.Bookmark, error) {
 	if err := assertBookOwned(ctx, userID, bookID); err != nil {
 		return nil, err
 	}
 	var bm model.Bookmark
 	err := database.Pool.QueryRow(ctx,
-		`INSERT INTO bookmarks (user_id, book_id, chapter_idx, char_offset, note)
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, user_id, book_id, chapter_idx, char_offset, note, created_at`,
-		userID, bookID, chapterIdx, charOffset, note,
-	).Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Note, &bm.CreatedAt)
+		`INSERT INTO bookmarks (user_id, book_id, chapter_idx, char_offset, anchor, scroll_pct, note)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, user_id, book_id, chapter_idx, char_offset, anchor, scroll_pct, note, created_at`,
+		userID, bookID, chapterIdx, charOffset, anchor, scrollPct, note,
+	).Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Anchor, &bm.ScrollPct, &bm.Note, &bm.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +78,9 @@ func UpdateBookmarkNote(ctx context.Context, userID, bookmarkID int, note string
 	err := database.Pool.QueryRow(ctx,
 		`UPDATE bookmarks SET note = $1
 		 WHERE id = $2 AND user_id = $3
-		 RETURNING id, user_id, book_id, chapter_idx, char_offset, note, created_at`,
+		 RETURNING id, user_id, book_id, chapter_idx, char_offset, anchor, scroll_pct, note, created_at`,
 		note, bookmarkID, userID,
-	).Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Note, &bm.CreatedAt)
+	).Scan(&bm.ID, &bm.UserID, &bm.BookID, &bm.ChapterIdx, &bm.CharOffset, &bm.Anchor, &bm.ScrollPct, &bm.Note, &bm.CreatedAt)
 	if err != nil {
 		return nil, ErrNotFound
 	}

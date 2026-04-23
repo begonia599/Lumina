@@ -18,10 +18,21 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 )
 
-// CreateBook processes an uploaded TXT file: detects encoding, converts to UTF-8,
-// parses chapters, and stores everything in the database scoped to userID.
-// The file is saved under uploads/{userID}/ to keep user data isolated.
+// CreateBook processes an uploaded book file and stores it for the user.
 func CreateBook(ctx context.Context, userID int, filename string, rawData []byte, uploadBaseDir string) (*model.Book, error) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".epub":
+		return createBookFromEPUB(ctx, userID, filename, rawData, uploadBaseDir)
+	case ".txt", "":
+		return createBookFromTXT(ctx, userID, filename, rawData, uploadBaseDir)
+	default:
+		return nil, fmt.Errorf("unsupported file format: %s (only .txt / .epub)", filepath.Ext(filename))
+	}
+}
+
+// createBookFromTXT processes an uploaded TXT file: detects encoding,
+// converts to UTF-8, parses chapters, and stores everything in the database.
+func createBookFromTXT(ctx context.Context, userID int, filename string, rawData []byte, uploadBaseDir string) (*model.Book, error) {
 	// 1. Detect encoding and convert to UTF-8
 	utf8Data, detectedEncoding, err := DetectAndConvert(rawData)
 	if err != nil {
@@ -82,6 +93,7 @@ func CreateBook(ctx context.Context, userID int, filename string, rawData []byte
 		UserID:       userID,
 		Title:        title,
 		Tags:         []string{},
+		Format:       "txt",
 		Filename:     filename,
 		FilePath:     filePath,
 		FileSize:     int64(len(utf8Data)),
@@ -96,23 +108,136 @@ func CreateBook(ctx context.Context, userID int, filename string, rawData []byte
 	return book, nil
 }
 
+func createBookFromEPUB(ctx context.Context, userID int, filename string, rawData []byte, uploadBaseDir string) (*model.Book, error) {
+	parsed, err := ParseEPUB(rawData)
+	if err != nil {
+		return nil, fmt.Errorf("parse epub: %w", err)
+	}
+	if parsed.IsFixedLayout {
+		return nil, fmt.Errorf("fixed-layout EPUB is not supported yet")
+	}
+
+	userDir := filepath.Join(uploadBaseDir, strconv.Itoa(userID))
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
+	baseName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), sanitizeFilename(strings.TrimSuffix(filename, filepath.Ext(filename))))
+	sourcePath := filepath.Join(userDir, baseName+".epub")
+	filePath := filepath.Join(userDir, baseName+".txt")
+
+	if err := os.WriteFile(sourcePath, rawData, 0644); err != nil {
+		return nil, fmt.Errorf("failed to save epub: %w", err)
+	}
+	if err := os.WriteFile(filePath, []byte(parsed.PlainText), 0644); err != nil {
+		_ = os.Remove(sourcePath)
+		return nil, fmt.Errorf("failed to save epub index: %w", err)
+	}
+
+	title := parsed.Title
+	if title == "" {
+		title = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
+
+	var bookID int
+	err = database.Pool.QueryRow(ctx,
+		`INSERT INTO books (
+			user_id, title, author, description, format, filename, file_path, source_path, file_size, encoding, chapter_count
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id`,
+		userID, title, parsed.Author, parsed.Description, "epub", filename, filePath, sourcePath, len(rawData), "UTF-8", len(parsed.Chapters),
+	).Scan(&bookID)
+	if err != nil {
+		_ = os.Remove(sourcePath)
+		_ = os.Remove(filePath)
+		return nil, fmt.Errorf("failed to insert book: %w", err)
+	}
+
+	chapters := make([]model.Chapter, 0, len(parsed.Chapters))
+	for idx, ch := range parsed.Chapters {
+		chapters = append(chapters, model.Chapter{
+			BookID:     bookID,
+			ChapterIdx: idx,
+			Title:      ch.Title,
+			StartPos:   ch.StartPos,
+			EndPos:     ch.EndPos,
+			ContentRef: ch.ContentRef,
+		})
+	}
+	if err := insertChapters(ctx, chapters); err != nil {
+		log.Printf("[WARN] Failed to insert EPUB chapters for book %d: %v", bookID, err)
+	}
+
+	_, err = database.Pool.Exec(ctx,
+		`INSERT INTO reading_progress (user_id, book_id, chapter_idx, char_offset, scroll_pct, percentage)
+		 VALUES ($1, $2, 0, 0, 0, 0)`,
+		userID, bookID,
+	)
+	if err != nil {
+		log.Printf("[WARN] Failed to initialize progress for EPUB book %d: %v", bookID, err)
+	}
+
+	var coverPath string
+	if len(parsed.CoverData) > 0 {
+		savedCoverPath, err := saveBookCoverBytes(uploadBaseDir, userID, bookID, parsed.CoverData, parsed.CoverMIME)
+		if err != nil {
+			log.Printf("[WARN] Failed to save EPUB cover for book %d: %v", bookID, err)
+		} else {
+			if _, err := database.Pool.Exec(ctx,
+				`UPDATE books SET cover_path = $1, updated_at = NOW()
+				 WHERE id = $2 AND user_id = $3`,
+				savedCoverPath, bookID, userID,
+			); err != nil {
+				_ = os.Remove(savedCoverPath)
+				log.Printf("[WARN] Failed to persist EPUB cover path for book %d: %v", bookID, err)
+			} else {
+				coverPath = savedCoverPath
+			}
+		}
+	}
+
+	return &model.Book{
+		ID:           bookID,
+		UserID:       userID,
+		Title:        title,
+		Author:       parsed.Author,
+		Description:  parsed.Description,
+		Tags:         []string{},
+		Format:       "epub",
+		Filename:     filename,
+		FilePath:     filePath,
+		SourcePath:   sourcePath,
+		CoverPath:    coverPath,
+		FileSize:     int64(len(rawData)),
+		Encoding:     "UTF-8",
+		ChapterCount: len(parsed.Chapters),
+		HasCover:     coverPath != "",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}, nil
+}
+
 // bookColumns is the SELECT expression shared by ListBooks / GetBook so any
 // column addition only changes one line.
 const bookColumns = `b.id, b.user_id, b.title, b.author, b.description, b.tags,
-b.filename, b.file_path, b.cover_path, b.file_size, b.encoding,
+b.format, b.filename, b.file_path, b.source_path, b.cover_path, b.file_size, b.encoding,
 b.chapter_count, b.created_at, b.updated_at`
 
 func scanBook(rows interface {
 	Scan(dest ...any) error
 }, b *model.Book) error {
 	var coverPath *string
+	var sourcePath *string
 	err := rows.Scan(
 		&b.ID, &b.UserID, &b.Title, &b.Author, &b.Description, &b.Tags,
-		&b.Filename, &b.FilePath, &coverPath, &b.FileSize, &b.Encoding,
+		&b.Format, &b.Filename, &b.FilePath, &sourcePath, &coverPath, &b.FileSize, &b.Encoding,
 		&b.ChapterCount, &b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {
 		return err
+	}
+	if sourcePath != nil {
+		b.SourcePath = *sourcePath
 	}
 	if coverPath != nil {
 		b.CoverPath = *coverPath
@@ -128,7 +253,7 @@ func scanBook(rows interface {
 func ListBooks(ctx context.Context, userID int) ([]model.BookWithProgress, error) {
 	rows, err := database.Pool.Query(ctx,
 		`SELECT `+bookColumns+`,
-		        rp.id, rp.chapter_idx, rp.char_offset, rp.percentage, rp.updated_at
+		        rp.id, rp.chapter_idx, rp.char_offset, rp.anchor, rp.scroll_pct, rp.percentage, rp.updated_at
 		 FROM books b
 		 LEFT JOIN reading_progress rp
 		   ON rp.book_id = b.id AND rp.user_id = b.user_id
@@ -144,20 +269,26 @@ func ListBooks(ctx context.Context, userID int) ([]model.BookWithProgress, error
 	for rows.Next() {
 		var b model.BookWithProgress
 		var coverPath *string
+		var sourcePath *string
 		var rpID *int
 		var rpChapter *int
 		var rpOffset *int
+		var rpAnchor *string
+		var rpScrollPct *float64
 		var rpPercent *float64
 		var rpUpdated *time.Time
 
 		err := rows.Scan(
 			&b.ID, &b.UserID, &b.Title, &b.Author, &b.Description, &b.Tags,
-			&b.Filename, &b.FilePath, &coverPath, &b.FileSize, &b.Encoding,
+			&b.Format, &b.Filename, &b.FilePath, &sourcePath, &coverPath, &b.FileSize, &b.Encoding,
 			&b.ChapterCount, &b.CreatedAt, &b.UpdatedAt,
-			&rpID, &rpChapter, &rpOffset, &rpPercent, &rpUpdated,
+			&rpID, &rpChapter, &rpOffset, &rpAnchor, &rpScrollPct, &rpPercent, &rpUpdated,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if sourcePath != nil {
+			b.SourcePath = *sourcePath
 		}
 		if coverPath != nil {
 			b.CoverPath = *coverPath
@@ -174,6 +305,8 @@ func ListBooks(ctx context.Context, userID int) ([]model.BookWithProgress, error
 				BookID:     b.ID,
 				ChapterIdx: *rpChapter,
 				CharOffset: *rpOffset,
+				Anchor:     rpAnchor,
+				ScrollPct:  rpScrollPct,
 				Percentage: *rpPercent,
 				UpdatedAt:  *rpUpdated,
 			}
@@ -329,25 +462,9 @@ func SetCover(ctx context.Context, userID, bookID int, file multipart.File, uplo
 
 	// Detect MIME from bytes (not from filename — untrusted).
 	mime := mimetype.Detect(data)
-	ext, ok := allowedCoverTypes[mime.String()]
-	if !ok {
-		return "", fmt.Errorf("unsupported image type: %s (only JPEG/PNG/WebP allowed)", mime.String())
-	}
-
-	coverDir := filepath.Join(uploadBaseDir, strconv.Itoa(userID), "covers")
-	if err := os.MkdirAll(coverDir, 0755); err != nil {
-		return "", fmt.Errorf("create cover dir: %w", err)
-	}
-
-	// Delete existing covers with different extensions so we don't leak files.
-	for _, oldExt := range []string{".jpg", ".png", ".webp"} {
-		oldPath := filepath.Join(coverDir, fmt.Sprintf("book_%d%s", bookID, oldExt))
-		_ = os.Remove(oldPath)
-	}
-
-	coverPath := filepath.Join(coverDir, fmt.Sprintf("book_%d%s", bookID, ext))
-	if err := os.WriteFile(coverPath, data, 0644); err != nil {
-		return "", fmt.Errorf("save cover: %w", err)
+	coverPath, err := saveBookCoverBytes(uploadBaseDir, userID, bookID, data, mime.String())
+	if err != nil {
+		return "", err
 	}
 
 	_, err = database.Pool.Exec(ctx,
@@ -359,6 +476,36 @@ func SetCover(ctx context.Context, userID, bookID int, file multipart.File, uplo
 		return "", fmt.Errorf("update cover path: %w", err)
 	}
 
+	return coverPath, nil
+}
+
+func saveBookCoverBytes(uploadBaseDir string, userID, bookID int, data []byte, mimeType string) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("cover data is empty")
+	}
+
+	if mimeType == "" {
+		mimeType = mimetype.Detect(data).String()
+	}
+	ext, ok := allowedCoverTypes[mimeType]
+	if !ok {
+		return "", fmt.Errorf("unsupported image type: %s (only JPEG/PNG/WebP allowed)", mimeType)
+	}
+
+	coverDir := filepath.Join(uploadBaseDir, strconv.Itoa(userID), "covers")
+	if err := os.MkdirAll(coverDir, 0755); err != nil {
+		return "", fmt.Errorf("create cover dir: %w", err)
+	}
+
+	for _, oldExt := range []string{".jpg", ".png", ".webp"} {
+		oldPath := filepath.Join(coverDir, fmt.Sprintf("book_%d%s", bookID, oldExt))
+		_ = os.Remove(oldPath)
+	}
+
+	coverPath := filepath.Join(coverDir, fmt.Sprintf("book_%d%s", bookID, ext))
+	if err := os.WriteFile(coverPath, data, 0644); err != nil {
+		return "", fmt.Errorf("save cover: %w", err)
+	}
 	return coverPath, nil
 }
 
@@ -418,12 +565,13 @@ func uploadBaseDirFromEnv() string {
 // data (cascaded by FK). Authorization: book must belong to userID.
 func DeleteBook(ctx context.Context, userID, bookID int) error {
 	var filePath string
+	var sourcePath *string
 	var coverPath *string
 	err := database.Pool.QueryRow(ctx,
 		`DELETE FROM books WHERE id = $1 AND user_id = $2
-		 RETURNING file_path, cover_path`,
+		 RETURNING file_path, source_path, cover_path`,
 		bookID, userID,
-	).Scan(&filePath, &coverPath)
+	).Scan(&filePath, &sourcePath, &coverPath)
 	if err != nil {
 		return ErrNotFound
 	}
@@ -434,6 +582,11 @@ func DeleteBook(ctx context.Context, userID, bookID int) error {
 	if coverPath != nil && *coverPath != "" {
 		if err := os.Remove(*coverPath); err != nil && !os.IsNotExist(err) {
 			log.Printf("[WARN] Failed to delete cover file %s: %v", *coverPath, err)
+		}
+	}
+	if sourcePath != nil && *sourcePath != "" {
+		if err := os.Remove(*sourcePath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[WARN] Failed to delete EPUB file %s: %v", *sourcePath, err)
 		}
 	}
 
@@ -468,9 +621,9 @@ func insertChapters(ctx context.Context, chapters []model.Chapter) error {
 
 	for _, ch := range chapters {
 		_, err := tx.Exec(ctx,
-			`INSERT INTO chapters (book_id, chapter_idx, title, start_pos, end_pos)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			ch.BookID, ch.ChapterIdx, ch.Title, ch.StartPos, ch.EndPos,
+			`INSERT INTO chapters (book_id, chapter_idx, title, start_pos, end_pos, content_ref)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			ch.BookID, ch.ChapterIdx, ch.Title, ch.StartPos, ch.EndPos, ch.ContentRef,
 		)
 		if err != nil {
 			return err

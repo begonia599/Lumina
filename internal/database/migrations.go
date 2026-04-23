@@ -115,6 +115,13 @@ func Migrate() error {
 		`ALTER TABLE books ADD COLUMN IF NOT EXISTS description TEXT         NOT NULL DEFAULT ''`,
 		`ALTER TABLE books ADD COLUMN IF NOT EXISTS cover_path  VARCHAR(512)`,
 		`ALTER TABLE books ADD COLUMN IF NOT EXISTS tags        TEXT[]       NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE books ADD COLUMN IF NOT EXISTS format      VARCHAR(8)    NOT NULL DEFAULT 'txt'`,
+		`ALTER TABLE books ADD COLUMN IF NOT EXISTS source_path VARCHAR(512)`,
+		`ALTER TABLE chapters ADD COLUMN IF NOT EXISTS content_ref VARCHAR(512)`,
+		`ALTER TABLE bookmarks        ADD COLUMN IF NOT EXISTS anchor      VARCHAR(256)`,
+		`ALTER TABLE bookmarks        ADD COLUMN IF NOT EXISTS scroll_pct  DOUBLE PRECISION`,
+		`ALTER TABLE reading_progress ADD COLUMN IF NOT EXISTS anchor      VARCHAR(256)`,
+		`ALTER TABLE reading_progress ADD COLUMN IF NOT EXISTS scroll_pct  DOUBLE PRECISION`,
 		// GIN index so "books tagged X" queries stay fast as tags grow.
 		`CREATE INDEX IF NOT EXISTS idx_books_tags ON books USING GIN(tags)`,
 

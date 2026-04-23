@@ -77,6 +77,7 @@ func main() {
 		authed.POST("/books/upload", handler.UploadBook)
 		authed.GET("/books", handler.ListBooks)
 		authed.GET("/books/:id", handler.GetBook)
+		authed.GET("/books/:id/resources/*path", handler.GetEPUBResource)
 		authed.PATCH("/books/:id", handler.UpdateBook)
 		authed.DELETE("/books/:id", handler.DeleteBook)
 

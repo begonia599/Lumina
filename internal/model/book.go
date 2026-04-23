@@ -10,8 +10,10 @@ type Book struct {
 	Author       string    `json:"author"`
 	Description  string    `json:"description"`
 	Tags         []string  `json:"tags"`
+	Format       string    `json:"format"`
 	Filename     string    `json:"filename"`
 	FilePath     string    `json:"-"`
+	SourcePath   string    `json:"-"`
 	CoverPath    string    `json:"-"`
 	HasCover     bool      `json:"hasCover"`
 	FileSize     int64     `json:"fileSize"`

@@ -49,9 +49,11 @@ func CreateBookmark(c *gin.Context) {
 	}
 
 	var req struct {
-		ChapterIdx int    `json:"chapterIdx"`
-		CharOffset int    `json:"charOffset"`
-		Note       string `json:"note"`
+		ChapterIdx int      `json:"chapterIdx"`
+		CharOffset int      `json:"charOffset"`
+		Anchor     *string  `json:"anchor"`
+		ScrollPct  *float64 `json:"scrollPct"`
+		Note       string   `json:"note"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidation, "请求格式错误")
@@ -62,7 +64,7 @@ func CreateBookmark(c *gin.Context) {
 		return
 	}
 
-	bookmark, err := service.CreateBookmark(c.Request.Context(), userID, bookID, req.ChapterIdx, req.CharOffset, req.Note)
+	bookmark, err := service.CreateBookmark(c.Request.Context(), userID, bookID, req.ChapterIdx, req.CharOffset, req.Anchor, req.ScrollPct, req.Note)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "书籍不存在")

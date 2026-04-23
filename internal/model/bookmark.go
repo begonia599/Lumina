@@ -10,6 +10,8 @@ type Bookmark struct {
 	BookID     int       `json:"bookId"`
 	ChapterIdx int       `json:"chapterIdx"`
 	CharOffset int       `json:"charOffset"`
+	Anchor     *string   `json:"anchor,omitempty"`
+	ScrollPct  *float64  `json:"scrollPct,omitempty"`
 	Note       string    `json:"note"`
 	CreatedAt  time.Time `json:"createdAt"`
 }

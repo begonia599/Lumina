@@ -239,3 +239,29 @@ func GetCover(c *gin.Context) {
 	}
 	c.File(path)
 }
+
+// GetEPUBResource handles GET /api/books/:id/resources/*path.
+func GetEPUBResource(c *gin.Context) {
+	userID := middleware.MustUserID(c)
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidation, "invalid book id")
+		return
+	}
+
+	resourcePath := strings.TrimPrefix(c.Param("path"), "/")
+	data, contentType, err := service.GetEPUBResource(c.Request.Context(), userID, id, resourcePath)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			httpx.Error(c, http.StatusNotFound, httpx.CodeNotFound, "resource not found")
+			return
+		}
+		httpx.Error(c, http.StatusBadRequest, httpx.CodeValidation, err.Error())
+		return
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, contentType, data)
+}

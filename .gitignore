@@ -39,3 +39,9 @@ web/*.log
 
 # Logs
 *.log
+
+# Local EPUB/manual test artifacts
+testdata/epub/*.epub
+tmp_uploads/
+tmp_lumina_cookie.txt
+web/tmp.vite.proxy*.config.js

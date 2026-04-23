@@ -7,7 +7,7 @@ export const useReaderStore = create((set, get) => ({
   book: null,
   chapters: [],
   chapter: null, // { chapterIdx, title, paragraphs, charCount, prevIdx, nextIdx }
-  progress: null, // { chapterIdx, charOffset, percentage }
+  progress: null, // { chapterIdx, charOffset, anchor?, scrollPct?, percentage }
   status: 'idle',
   error: null,
 
@@ -57,12 +57,12 @@ export const useReaderStore = create((set, get) => ({
     return chapter
   },
 
-  async saveProgress({ chapterIdx, charOffset, percentage }) {
+  async saveProgress({ chapterIdx, charOffset, anchor, scrollPct, percentage }) {
     const bookId = get().bookId
     if (bookId == null) return
-    set({ progress: { chapterIdx, charOffset, percentage } })
+    set({ progress: { chapterIdx, charOffset, anchor, scrollPct, percentage } })
     try {
-      await progressApi.updateProgress(bookId, { chapterIdx, charOffset, percentage })
+      await progressApi.updateProgress(bookId, { chapterIdx, charOffset, anchor, scrollPct, percentage })
     } catch {
       /* silent — retried on next save */
     }

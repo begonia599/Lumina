@@ -12,7 +12,8 @@ import styles from './BookmarkPanel.module.css'
  *   bookId
  *   chapters: full chapter list (for showing chapter titles on each mark)
  *   currentChapterIdx, currentCharOffset: for "add at current position"
- *   onJump(chapterIdx, charOffset)
+ *   onJump(bookmarkOrChapterIdx, charOffset?)
+ *   onAddCurrent() -> Promise<bookmark | null>
  *   onClose()
  */
 export function BookmarkPanel({
@@ -22,6 +23,7 @@ export function BookmarkPanel({
   currentChapterIdx,
   currentCharOffset,
   onJump,
+  onAddCurrent,
   onClose,
 }) {
   const [bookmarks, setBookmarks] = useState([])
@@ -64,12 +66,19 @@ export function BookmarkPanel({
 
   async function handleAdd() {
     try {
+      if (onAddCurrent) {
+        const bm = await onAddCurrent()
+        if (bm) {
+          setBookmarks((list) => [bm, ...list.filter((item) => item.id !== bm.id)])
+        }
+        return
+      }
       const bm = await bookmarksApi.createBookmark(bookId, {
         chapterIdx: currentChapterIdx,
         charOffset: currentCharOffset,
         note: '',
       })
-      setBookmarks([bm, ...bookmarks])
+      setBookmarks((list) => [bm, ...list])
     } catch (err) {
       setError(err.message || '添加失败')
     }
@@ -168,7 +177,7 @@ export function BookmarkPanel({
                 <li key={bm.id} className={styles.item}>
                   <button
                     className={styles.itemJump}
-                    onClick={() => onJump(bm.chapterIdx, bm.charOffset)}
+                    onClick={() => onJump(bm)}
                   >
                     <span className={styles.itemChapter}>
                       {chapterTitle(bm.chapterIdx)}

@@ -11,7 +11,7 @@ import styles from './SearchOverlay.module.css'
  * Props:
  *   open
  *   bookId
- *   onJump(chapterIdx, charOffset)
+ *   onJump(hit, query)
  *   onClose()
  */
 export function SearchOverlay({ open, bookId, onJump, onClose }) {
@@ -32,6 +32,25 @@ export function SearchOverlay({ open, bookId, onJump, onClose }) {
       setHits([])
       setStatus('idle')
       setActive(0)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    const { body, documentElement } = document
+    const prevBodyOverflow = body.style.overflow
+    const prevBodyTouchAction = body.style.touchAction
+    const prevHtmlOverflow = documentElement.style.overflow
+
+    body.style.overflow = 'hidden'
+    body.style.touchAction = 'none'
+    documentElement.style.overflow = 'hidden'
+
+    return () => {
+      body.style.overflow = prevBodyOverflow
+      body.style.touchAction = prevBodyTouchAction
+      documentElement.style.overflow = prevHtmlOverflow
     }
   }, [open])
 
@@ -82,14 +101,14 @@ export function SearchOverlay({ open, bookId, onJump, onClose }) {
       } else if (e.key === 'Enter') {
         const h = hits[active]
         if (h) {
-          onJump(h.chapterIdx, h.charOffset)
+          onJump(h, query.trim())
           onClose()
         }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, hits, active, onJump, onClose])
+  }, [open, hits, active, query, onJump, onClose])
 
   // Keep active hit in view.
   useEffect(() => {
@@ -157,12 +176,12 @@ export function SearchOverlay({ open, bookId, onJump, onClose }) {
 
             <ul ref={listRef} className={styles.list}>
               {hits.map((h, i) => (
-                <li key={`${h.chapterIdx}-${h.charOffset}`} data-hit-idx={i}>
+                <li key={`${h.chapterIdx}-${h.hitSeq ?? h.charOffset}-${i}`} data-hit-idx={i}>
                   <button
                     className={`${styles.item} ${i === active ? styles.itemActive : ''}`}
                     onMouseEnter={() => setActive(i)}
                     onClick={() => {
-                      onJump(h.chapterIdx, h.charOffset)
+                      onJump(h, query.trim())
                       onClose()
                     }}
                   >

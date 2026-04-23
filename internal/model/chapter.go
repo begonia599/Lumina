@@ -7,4 +7,5 @@ type Chapter struct {
 	Title      string `json:"title"`
 	StartPos   int    `json:"startPos"`
 	EndPos     int    `json:"endPos"`
+	ContentRef string `json:"contentRef,omitempty"`
 }

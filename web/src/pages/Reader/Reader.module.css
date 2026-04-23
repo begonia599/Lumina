@@ -97,6 +97,56 @@
   word-break: break-word;
 }
 
+.epubContent {
+  font-family: var(--font-reading);
+  font-size: var(--reader-font-size, 1.15rem);
+  line-height: var(--reader-line-height, 1.85);
+  color: var(--text-main);
+}
+
+.epubContent :global(.epub-chapter) {
+  max-width: 100%;
+}
+
+.epubContent :global(.epub-chapter) p {
+  margin: 0 0 0.8em;
+}
+
+.epubContent :global(.epub-chapter) img,
+.epubContent :global(.epub-chapter) svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.epubContent :global(.epub-chapter) a {
+  color: var(--accent);
+}
+
+.epubContent :global(mark.search-hit-temp) {
+  background: color-mix(in srgb, var(--accent) 28%, #fff3a8);
+  color: inherit;
+  padding: 0 0.14em;
+  border-radius: 0.22em;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.epubContent :global(.search-hit-fallback) {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.epubContent :global(.epub-chapter) pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.epubContent :global(.epub-chapter) table {
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
 :global(html[data-text-align='justify']) .paragraph {
   text-align: justify;
   hanging-punctuation: allow-end;
